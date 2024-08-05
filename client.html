@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Stream</title>
+</head>
+<body>
+    <script>
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const ws = new WebSocket('ws://localhost:3307');
+        ws.binaryType = 'arraybuffer';
+        
+        const MINIMUM_BUFFER_SIZE = 705600 * 1;
+        let canIgnoreMinimumBufferSize = false;
+        let currentArrayBuffer = null;
+        let totalReceivedBytes = 0;
+        let headerArrayBuffer = null;
+        let timerId;
+
+        let audioQueue = [];
+        let isPlaying = false;
+        let startTime = 0;
+
+        function startTimer(duration)
+        {
+            timerId = setTimeout(() =>
+            {
+                canIgnoreMinimumBufferSize = true;
+            }, duration);
+        }
+
+        function cancelTimer() {
+            canIgnoreMinimumBufferSize = false;
+            clearTimeout(timerId);   
+        }
+
+        function mergeBuffer(buffer1, buffer2)
+        {
+            if ( buffer1 == null )
+            {
+                let result = new Uint8Array(buffer2.byteLength);
+                result.set(new Uint8Array(buffer2), 0);
+                return result.buffer;
+            }
+
+            if ( buffer2 == null )
+            {
+                let result = new Uint8Array(buffer1.byteLength);
+                result.set(new Uint8Array(buffer1), 0);
+                return result.buffer;
+            }
+
+            let result = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
+            result.set(new Uint8Array(buffer1), 0);
+            result.set(new Uint8Array(buffer2), buffer1.byteLength);
+
+            return result.buffer;
+        }
+
+        function updateLabels()
+        {
+            document.getElementById('currentBufferSize').innerHTML = '<strong>' + currentArrayBuffer.byteLength + '</strong>';
+            document.getElementById('totalReceivedBytes').innerHTML = '<strong>' + totalReceivedBytes + '</strong>';
+            
+        }
+        ws.onmessage = async (event) => 
+        {
+            cancelTimer();
+
+            const arrayBuffer = event.data;
+            console.log('Received data of size:', arrayBuffer.byteLength);
+            totalReceivedBytes += arrayBuffer.byteLength;
+            
+            // If is wave header
+            if ( arrayBuffer.byteLength != 4096 )
+            {
+                headerArrayBuffer = arrayBuffer;
+                return;
+            }
+
+            // Add to current buffer
+            currentArrayBuffer = mergeBuffer(currentArrayBuffer, arrayBuffer);
+
+            // Update labels
+            updateLabels();
+        
+            // Get current buffer size
+            if ( currentArrayBuffer.byteLength < MINIMUM_BUFFER_SIZE && !canIgnoreMinimumBufferSize )
+            {
+                // Play remaining buffer after no longer receiving data for 2 seconds
+                startTimer(2000);
+                return;
+            }
+
+            // Merge final buffer
+            tmpArrayBuffer = mergeBuffer(headerArrayBuffer, currentArrayBuffer);
+
+            // Clear buffer
+            currentArrayBuffer = null;
+
+            try
+            {
+                const decodedAudioDataBuffer = await audioContext.decodeAudioData(tmpArrayBuffer);
+                audioQueue.push(decodedAudioDataBuffer);
+                playNextBuffer();
+      
+            } catch (error) {
+                console.error('Error decoding audio data:', error);
+            }
+        };
+
+        ws.onopen = () => {
+            document.getElementById('minimumBufferSize').innerHTML = '<strong>' + MINIMUM_BUFFER_SIZE + '</strong>';
+            console.log('Connected to server');
+        };
+
+        ws.onclose = () => {
+            console.log('Disconnected from server');
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket Error:', error);
+        };
+
+   
+        function playNextBuffer()
+        {
+            console.log("isPlaying=", isPlaying);
+            if (isPlaying)
+            {
+                return;
+            }
+            console.log("playNextBuffer...");
+            if (audioQueue.length > 0)
+            {
+                // Set control var
+                isPlaying = true;
+
+                // get buffer from queue
+                const decodedAudioDataBuffer = audioQueue.shift();
+                const source = audioContext.createBufferSource();
+                source.buffer = decodedAudioDataBuffer;
+                source.connect(audioContext.destination);
+
+                // Start playing
+                console.log("starting at time", startTime);
+                startTime += source.buffer.duration;
+                source.start(0);
+                console.log('Playing buffer');
+                
+                // Play next on end
+                source.onended = () =>
+                {
+                    isPlaying = false;
+                    playNextBuffer();
+                }
+            } else {
+                console.log("audio buffer is empty");
+            }
+        }
+    </script>
+
+    <div>Minimum buffer size: <span id="minimumBufferSize"></span></div>
+    <div>Current buffer size: <span id="currentBufferSize"></span></div>
+    <div>Total received bytes: <span id="totalReceivedBytes"></span></div>
+</body>
+</html>
