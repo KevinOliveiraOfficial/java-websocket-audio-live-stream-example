@@ -122,7 +122,7 @@ public class AudioWebSocketServer extends WebSocketServer
         {
             try (FileInputStream fis = new FileInputStream(track.file))
             {
-                System.out.println("reading file");
+                System.out.println("broadcasting " + track.name);
                 
                 // Read header
                 byte[] header = new byte[track.headerSize]; // WAV header size
@@ -141,7 +141,7 @@ public class AudioWebSocketServer extends WebSocketServer
                 while ((bytesRead = fis.read(buffer)) != -1)
                 {
                     broadcastEvent("STREAM", channel.name, buffer);
-                    System.out.println("broadcasting");
+                    
 
                     Thread.sleep(1000);
                 }
