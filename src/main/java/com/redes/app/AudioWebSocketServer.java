@@ -7,13 +7,7 @@ import org.json.JSONObject;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 
 import javax.sound.sampled.UnsupportedAudioFileException;
@@ -23,18 +17,21 @@ import java.io.File;
 public class AudioWebSocketServer extends WebSocketServer
 {
     private List<Channel> channels = new ArrayList<Channel>();
-    private Track currentTrack;
 
     public AudioWebSocketServer(int port) throws UnsupportedAudioFileException, IOException
     {
         super(new InetSocketAddress(port));
         
         Channel pop = new Channel("POP");
+        pop.tracks.add(new Track("Vintage Culture - Deep Inside", new File("src/main/resources/vintage_culture_deep_inside.wav"), 262));
         pop.tracks.add(new Track("Martin Garrix - Smile", new File("src/main/resources/martingarrix_smile.wav"), 78));
+       
         pop.tracks.add(new Track("Radio FM Vinheta", new File("src/main/resources/radiofm.wav"), 77));
+        
+        
 
         Channel sertanejo = new Channel("SERTANEJO");
-        sertanejo.tracks.add(new Track("Radio FM Vinheta", new File("src/main/resources/radiofm.wav"), 77));
+        sertanejo.tracks.add(new Track("Martin Garrix - Smile", new File("src/main/resources/martingarrix_smile.wav"), 78));
 
         channels.add(pop);
         channels.add(sertanejo);
