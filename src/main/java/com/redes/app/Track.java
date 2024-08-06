@@ -9,12 +9,14 @@ import javax.sound.sampled.UnsupportedAudioFileException;
 
 public class Track
 {
+    public String name;
     public File file;
     public int headerSize = 0;
     public byte[] header;
     public AudioInputStream audioInputStream;
 
-    public Track( File file, int headerSize ) throws UnsupportedAudioFileException, IOException {
+    public Track( String name, File file, int headerSize ) throws UnsupportedAudioFileException, IOException {
+        this.name = name;
         this.file = file;
         this.headerSize = headerSize;
 

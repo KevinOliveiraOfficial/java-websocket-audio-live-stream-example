@@ -3,7 +3,7 @@ package com.redes.app;
 import org.java_websocket.server.WebSocketServer;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
-
+import org.json.JSONObject;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -12,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import javax.sound.sampled.UnsupportedAudioFileException;
@@ -20,23 +22,59 @@ import java.io.File;
 
 public class AudioWebSocketServer extends WebSocketServer
 {
-    private List<Track> tracks = new ArrayList<Track>();
+    private List<Channel> channels = new ArrayList<Channel>();
     private Track currentTrack;
 
     public AudioWebSocketServer(int port) throws UnsupportedAudioFileException, IOException
     {
         super(new InetSocketAddress(port));
-        //this.capture = new AudioCapture();
-        this.tracks.add(new Track(new File("src/main/resources/martingarrix_smile.wav"), 78));
-        this.tracks.add(new Track(new File("src/main/resources/radiofm.wav"), 77));
         
-        
-        
+        Channel pop = new Channel("POP");
+        pop.tracks.add(new Track("Martin Garrix - Smile", new File("src/main/resources/martingarrix_smile.wav"), 78));
+        pop.tracks.add(new Track("Radio FM Vinheta", new File("src/main/resources/radiofm.wav"), 77));
+
+        Channel sertanejo = new Channel("SERTANEJO");
+        sertanejo.tracks.add(new Track("Radio FM Vinheta", new File("src/main/resources/radiofm.wav"), 77));
+
+        channels.add(pop);
+        channels.add(sertanejo);
+    }
+
+    private void broadcastEvent( String event, String data )
+    {
+        JSONObject message = new JSONObject();
+        message.put("event", event);
+        message.put("data", data);
+        broadcast(message.toString());
+    }
+
+    private void broadcastEvent( String event, String channel, byte[] data )
+    {
+        JSONObject message = new JSONObject();
+        message.put("event", event);
+        message.put("channel", channel);
+        message.put("data", data);
+        broadcast(message.toString());
+    }
+
+    private void sendChannelHeader( WebSocket conn, Channel channel )
+    {
+        JSONObject message = new JSONObject();
+        message.put("event", "CHANNEL_HEADER");
+        message.put("channel", channel.name);
+        message.put("playing", channel.playing.name);
+        message.put("data", channel.playing.header);
+
+        if ( conn != null)
+            conn.send(message.toString());
+        else
+            broadcast(message.toString());
     }
 
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
         System.out.println("Closed connection: " + conn.getRemoteSocketAddress());
+        broadcastEvent("GUEST_DISCONNECT", conn.getRemoteSocketAddress().toString());
     }
 
     @Override
@@ -50,49 +88,63 @@ public class AudioWebSocketServer extends WebSocketServer
     }
 
     @Override
-    public void onStart() {
+    public void onStart()
+    {
         System.out.println("Server started successfully");
-        new Thread(() -> {
-            try {
-                streamAudio();
-            } catch (InterruptedException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-        }).start();
+        for ( Channel channel : this.channels )
+        {
+            new Thread(() ->
+            {
+                try {
+                    this.streamAudio( channel );
+                } catch (InterruptedException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+            }).start();
+        }
     }
 
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
         System.out.println("New connection: " + conn.getRemoteSocketAddress());
-        conn.send(this.currentTrack.header);
+
+        broadcastEvent("GUEST_CONNECT", conn.getRemoteSocketAddress().toString());
+
+        // Send channels header
+        for ( Channel channel : this.channels )
+        {
+            sendChannelHeader(conn, channel);
+        }
     }
 
-    private void streamAudio() throws InterruptedException
+    private void streamAudio( Channel channel ) throws InterruptedException
     {
-        for ( Track track : this.tracks )
+        for ( Track track : channel.tracks )
         {
             try (FileInputStream fis = new FileInputStream(track.file))
             {
                 System.out.println("reading file");
-                this.currentTrack = track;
-
+                
                 // Read header
                 byte[] header = new byte[track.headerSize]; // WAV header size
                 fis.read(header); // Read the WAV header
-                this.currentTrack.header = header;
+                track.header = header;
+
+                // Set current playing track
+                channel.playing = track;
 
                 // Broadcast header
-                broadcast(header);
+                sendChannelHeader(null, channel);
 
                 // Broadcast track
                 byte[] buffer = new byte[track.calcBps()];
                 int bytesRead;
                 while ((bytesRead = fis.read(buffer)) != -1)
                 {
+                    broadcastEvent("STREAM", channel.name, buffer);
                     System.out.println("broadcasting");
-                    //conn.send(buffer);
-                    broadcast(buffer);
+
                     Thread.sleep(1000);
                 }
                 
