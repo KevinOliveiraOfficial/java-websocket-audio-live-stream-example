@@ -10,30 +10,16 @@
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const ws = new WebSocket('ws://localhost:3307');
         ws.binaryType = 'arraybuffer';
+
+        const BUFFER_THRESHOLD  = 10;
+        const MAX_BUFFER_THRESHOLD = 20;
         
-        const MINIMUM_BUFFER_SIZE = 705600 * 1;
-        let canIgnoreMinimumBufferSize = false;
-        let currentArrayBuffer = null;
-        let totalReceivedBytes = 0;
-        let headerArrayBuffer = null;
-        let timerId;
+        const channels = [];
+        var selectedChannel = null;
 
-        let audioQueue = [];
-        let isPlaying = false;
-        let startTime = 0;
-
-        function startTimer(duration)
-        {
-            timerId = setTimeout(() =>
-            {
-                canIgnoreMinimumBufferSize = true;
-            }, duration);
-        }
-
-        function cancelTimer() {
-            canIgnoreMinimumBufferSize = false;
-            clearTimeout(timerId);   
-        }
+        var totalReceivedBytes = 0;
+        var isPlaying = false;
+        var startTime = 0;
 
         function mergeBuffer(buffer1, buffer2)
         {
@@ -60,58 +46,90 @@
 
         function updateLabels()
         {
-            document.getElementById('currentBufferSize').innerHTML = '<strong>' + currentArrayBuffer.byteLength + '</strong>';
+            document.getElementById('selectedChannel').innerHTML = '<strong>' + selectedChannel["channel"] + '</strong>';
+            document.getElementById('playing').innerHTML = '<strong>' + selectedChannel["playing"] + '</strong>';
+            document.getElementById('currentAudioBufferQueue').innerHTML = '<strong>' + selectedChannel["audioQueue"].length + 's</strong>';
             document.getElementById('totalReceivedBytes').innerHTML = '<strong>' + totalReceivedBytes + '</strong>';
             
         }
-        ws.onmessage = async (event) => 
+
+        function selectChannel( name ) {
+            let channel = channels.find( (k) => k.channel === name );
+            if ( channel )
+            {
+                this.selectedChannel = channel;
+                updateLabels();
+            }
+        }
+        ws.onmessage = (event) => 
         {
-            cancelTimer();
 
-            const arrayBuffer = event.data;
-            console.log('Received data of size:', arrayBuffer.byteLength);
-            totalReceivedBytes += arrayBuffer.byteLength;
-            
+            const message = JSON.parse(event.data);
+
+            if ( message.event === "GUEST_CONNECT" )
+            {
+
+            }
+            else if ( message.event === "GUEST_DISCONNECT" )
+            {
+
+            }
             // If is wave header
-            if ( arrayBuffer.byteLength != 4096 )
+            else if ( message.event === "CHANNEL_HEADER" )
             {
-                headerArrayBuffer = arrayBuffer;
-                return;
+                let channel = channels.find( (k) => k.channel === message.channel );
+                if ( channel === undefined )
+                {
+                    channel = {};
+                    channel["isBuffered"] = false;
+                    channel["audioQueue"] = [];
+                    channels.push(channel);
+                }
+
+                channel["channel"] = message.channel;
+                channel["playing"] = message.playing;
+                channel["headerArrayBuffer"] = new Uint8Array(message.data).buffer
+
+                // Set default selected channel
+                if ( selectedChannel === null )
+                    selectedChannel = channel;
             }
-
-            // Add to current buffer
-            currentArrayBuffer = mergeBuffer(currentArrayBuffer, arrayBuffer);
-
-            // Update labels
-            updateLabels();
-        
-            // Get current buffer size
-            if ( currentArrayBuffer.byteLength < MINIMUM_BUFFER_SIZE && !canIgnoreMinimumBufferSize )
+            else if ( message.event === "STREAM" )
             {
-                // Play remaining buffer after no longer receiving data for 2 seconds
-                startTimer(2000);
-                return;
-            }
+                const channel = channels.find( (k) => k.channel === message.channel );
+                const arrayBuffer = new Uint8Array(message.data).buffer;
+                totalReceivedBytes += arrayBuffer.byteLength;
+            
+                // Update labels
+                updateLabels();
 
-            // Merge final buffer
-            tmpArrayBuffer = mergeBuffer(headerArrayBuffer, currentArrayBuffer);
+                produce(channel, mergeBuffer(channel["headerArrayBuffer"], arrayBuffer));
 
-            // Clear buffer
-            currentArrayBuffer = null;
-
-            try
-            {
-                const decodedAudioDataBuffer = await audioContext.decodeAudioData(tmpArrayBuffer);
-                audioQueue.push(decodedAudioDataBuffer);
-                playNextBuffer();
-      
-            } catch (error) {
-                console.error('Error decoding audio data:', error);
+                if  ( selectedChannel["audioQueue"].length >= BUFFER_THRESHOLD && !isPlaying )
+                {
+                    //channel["isBuffered"] = true;
+                    playNextBuffer();
+                }         
             }
         };
 
+        async function produce(channel, buffer)
+        {
+            try
+            {
+                const decodedAudioDataBuffer = await audioContext.decodeAudioData(buffer)
+                channel["audioQueue"].push(decodedAudioDataBuffer);
+
+                if ( channel["audioQueue"].length > MAX_BUFFER_THRESHOLD )
+                    channel["audioQueue"].shift();
+            
+            } catch (error) {
+                console.error('Error decoding audio data:', error);
+                ws.close();
+            }
+        }
+
         ws.onopen = () => {
-            document.getElementById('minimumBufferSize').innerHTML = '<strong>' + MINIMUM_BUFFER_SIZE + '</strong>';
             console.log('Connected to server');
         };
 
@@ -126,28 +144,29 @@
    
         function playNextBuffer()
         {
-            console.log("isPlaying=", isPlaying);
             if (isPlaying)
             {
                 return;
             }
-            console.log("playNextBuffer...");
-            if (audioQueue.length > 0)
+                
+            
+            if (selectedChannel["audioQueue"].length > 0)
             {
+
                 // Set control var
                 isPlaying = true;
 
                 // get buffer from queue
-                const decodedAudioDataBuffer = audioQueue.shift();
+                const decodedAudioDataBuffer = selectedChannel["audioQueue"].shift();
                 const source = audioContext.createBufferSource();
                 source.buffer = decodedAudioDataBuffer;
                 source.connect(audioContext.destination);
 
                 // Start playing
-                console.log("starting at time", startTime);
+                //console.log("starting at time", startTime);
                 startTime += source.buffer.duration;
                 source.start(0);
-                console.log('Playing buffer');
+                //console.log('Playing buffer');
                 
                 // Play next on end
                 source.onended = () =>
@@ -161,8 +180,9 @@
         }
     </script>
 
-    <div>Minimum buffer size: <span id="minimumBufferSize"></span></div>
-    <div>Current buffer size: <span id="currentBufferSize"></span></div>
+    <div>Channel: <span id="selectedChannel">-</span></div>
+    <div>Playing: <span id="playing">-</span></div>
+    <div>Current audio buffer (seconds): <span id="currentAudioBufferQueue"></span></div>
     <div>Total received bytes: <span id="totalReceivedBytes"></span></div>
 </body>
 </html>
