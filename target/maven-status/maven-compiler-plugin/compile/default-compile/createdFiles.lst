@@ -1,4 +1,5 @@
 com\redes\app\Main.class
+com\redes\app\Channel.class
 com\redes\app\AudioWebSocketServer.class
 com\redes\app\Main$WavHeaderInfo.class
-com\redes\app\AudioCapture.class
+com\redes\app\Track.class

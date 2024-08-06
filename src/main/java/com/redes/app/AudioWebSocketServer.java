@@ -26,12 +26,13 @@ public class AudioWebSocketServer extends WebSocketServer
         pop.tracks.add(new Track("Vintage Culture - Deep Inside", new File("src/main/resources/vintage_culture_deep_inside.wav"), 262));
         pop.tracks.add(new Track("Martin Garrix - Smile", new File("src/main/resources/martingarrix_smile.wav"), 78));
        
-        pop.tracks.add(new Track("Radio FM Vinheta", new File("src/main/resources/radiofm.wav"), 77));
+        
         
         
 
         Channel sertanejo = new Channel("SERTANEJO");
-        sertanejo.tracks.add(new Track("Martin Garrix - Smile", new File("src/main/resources/martingarrix_smile.wav"), 78));
+        sertanejo.tracks.add(new Track("Radio FM Vinheta", new File("src/main/resources/radiofm.wav"), 77));
+        //sertanejo.tracks.add(new Track("Martin Garrix - Smile", new File("src/main/resources/martingarrix_smile.wav"), 78));
 
         channels.add(pop);
         channels.add(sertanejo);
@@ -149,5 +150,6 @@ public class AudioWebSocketServer extends WebSocketServer
                 e.printStackTrace();
             }
         }
+        streamAudio(channel);
     }
 }
