@@ -83,7 +83,7 @@ public class Main {
 
     public static void main(String[] args) throws InterruptedException, IOException, UnsupportedAudioFileException
     {
-        File wavFile = new File("src/main/resources/martingarrix_smile.wav");
+        File wavFile = new File("music/martingarrix_smile.wav");
         WavHeaderInfo headerInfo = getWavHeaderInfo(wavFile);
         System.out.println("Header size: " + headerInfo.headerSize + " bytes");
         System.out.println("Data chunk size: " + headerInfo.dataChunkSize + " bytes");

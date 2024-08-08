@@ -4,11 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Stream</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+
     <script>
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const ws = new WebSocket('ws://189.58.101.130:43307');
+        const ws = new WebSocket('ws://192.168.137.1:3307');
         ws.binaryType = 'arraybuffer';
 
         const BUFFER_THRESHOLD  = 10;
@@ -50,7 +52,6 @@
             document.getElementById('playing').innerHTML = '<strong>' + selectedChannel["playing"] + '</strong>';
             document.getElementById('currentAudioBufferQueue').innerHTML = '<strong>' + selectedChannel["audioQueue"].length + 's</strong>';
             document.getElementById('totalReceivedBytes').innerHTML = '<strong>' + totalReceivedBytes + '</strong>';
-            
         }
 
         function selectChannel( name ) {
@@ -61,57 +62,60 @@
                 updateLabels();
             }
         }
-        ws.onmessage = (event) => 
-        {
-
+        ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
+        
+            if (message.event === "GUEST_CONNECT") {
+                const listItem = document.createElement('li');
+                listItem.textContent = `${message.data} Entrou`;
+                document.getElementById('userList').appendChild(listItem);
+                
 
-            if ( message.event === "GUEST_CONNECT" )
-            {
-
+            } else if (message.event === "GUEST_DISCONNECT") {
+                const listItem = document.createElement('li');
+                listItem.textContent = `${message.data} Saiu`; 
+                document.getElementById('userList').appendChild(listItem);
+            } else if (message.event === "ACTIVE_CLIENTS"){
+                const users = message.data;
+                document.getElementById('countUsers').innerHTML = '<strong>' + users.length + '</strong>';
             }
-            else if ( message.event === "GUEST_DISCONNECT" )
-            {
 
-            }
-            // If is wave header
-            else if ( message.event === "CHANNEL_HEADER" )
-            {
-                let channel = channels.find( (k) => k.channel === message.channel );
-                if ( channel === undefined )
-                {
+            // Se é o cabeçalho de onda
+            else if (message.event === "CHANNEL_HEADER") {
+                let channel = channels.find((k) => k.channel === message.channel);
+                if (channel === undefined) {
                     channel = {};
                     channel["isBuffered"] = false;
                     channel["audioQueue"] = [];
                     channels.push(channel);
                 }
-
+            
+        
+        
                 channel["channel"] = message.channel;
                 channel["playing"] = message.playing;
                 channel["headerArrayBuffer"] = new Uint8Array(message.data).buffer
-
-                // Set default selected channel
-                if ( selectedChannel === null )
+        
+                // Define o canal padrão selecionado
+                if (selectedChannel === null)
                     selectedChannel = channel;
-            }
-            else if ( message.event === "STREAM" )
-            {
-                const channel = channels.find( (k) => k.channel === message.channel );
+            } else if (message.event === "STREAM") {
+                const channel = channels.find((k) => k.channel === message.channel);
                 const arrayBuffer = new Uint8Array(message.data).buffer;
                 totalReceivedBytes += arrayBuffer.byteLength;
-            
-                // Update labels
+        
+                // Atualiza os rótulos
                 updateLabels();
-
+        
                 produce(channel, mergeBuffer(channel["headerArrayBuffer"], arrayBuffer));
-
-                if  ( selectedChannel["audioQueue"].length >= BUFFER_THRESHOLD && !isPlaying )
-                {
+        
+                if (selectedChannel["audioQueue"].length >= BUFFER_THRESHOLD && !isPlaying) {
                     //channel["isBuffered"] = true;
                     playNextBuffer();
-                }         
+                }
             }
         };
+        
 
         async function produce(channel, buffer)
         {
@@ -178,11 +182,92 @@
                 console.log("audio buffer is empty");
             }
         }
-    </script>
 
-    <div>Channel: <span id="selectedChannel">-</span></div>
-    <div>Playing: <span id="playing">-</span></div>
-    <div>Current audio buffer (seconds): <span id="currentAudioBufferQueue"></span></div>
-    <div>Total received bytes: <span id="totalReceivedBytes"></span></div>
+        window.onload = () => {
+            console.log(channels)
+            document.getElementById('channelSwitcher').addEventListener('click', () => {
+                const currentIndex = channels.findIndex(channel => channel.channel === selectedChannel.channel);
+                if(currentIndex === channels.length - 1 ){
+                    const nextIndex = 0
+                    selectChannel(channels[nextIndex].channel);
+                }else{
+                    const nextIndex = (currentIndex + 1);
+                    selectChannel(channels[nextIndex].channel);
+                }
+            });
+        };
+
+    </script>
+    
+    <div class="container">
+        <aside class="sidebar right-sidebar">
+            <div class="logo">
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-door-enter" width="76" height="76" viewBox="0 0 24 24" stroke-width="2" stroke="#ffffff" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M13 12v.01" />
+                    <path d="M3 21h18" />
+                    <path d="M5 21v-16a2 2 0 0 1 2 -2h6m4 10.5v7.5" />
+                    <path d="M21 7h-7m3 -3l-3 3l3 3" />
+                  </svg>
+            </div>
+            <nav>
+                <ul id="userList">
+                    <!-- As mensagens de conexão serão adicionadas aqui pelo JavaScript -->
+                </ul>
+            </nav>
+        </aside>
+        <main class="main-content">
+            <header class="header">
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-wave-sine" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="#ffffff" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M21 12h-2c-.894 0 -1.662 -.857 -1.761 -2c-.296 -3.45 -.749 -6 -2.749 -6s-2.5 3.582 -2.5 8s-.5 8 -2.5 8s-2.452 -2.547 -2.749 -6c-.1 -1.147 -.867 -2 -1.763 -2h-2" />
+                  </svg>
+                <h1>Audio Stream App</h1>
+            </header>
+            <div class="content">
+                <div class="central-div">
+                    <div>Playing: <span id="playing">-</span></div>
+                </div>
+                <div class="dashboard">
+                    <div class="block">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-ear svg-margin" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="#ffffff" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                            <path d="M6 10a7 7 0 1 1 13 3.6a10 10 0 0 1 -2 2a8 8 0 0 0 -2 3a4.5 4.5 0 0 1 -6.8 1.4" />
+                            <path d="M10 10a3 3 0 1 1 5 2.2" />
+                          </svg>
+                          <div id="countUsers"></div>
+                    </div>
+                    <div class="block">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-cpu svg-margin" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="#ffffff" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                            <path d="M5 5m0 1a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1z" />
+                            <path d="M9 9h6v6h-6z" />
+                            <path d="M3 10h2" />
+                            <path d="M3 14h2" />
+                            <path d="M10 3v2" />
+                            <path d="M14 3v2" />
+                            <path d="M21 10h-2" />
+                            <path d="M21 14h-2" />
+                            <path d="M14 21v-2" />
+                            <path d="M10 21v-2" />
+                          </svg>
+                          <div>Current audio buffer (seconds): <span id="currentAudioBufferQueue"></span></div>
+                          <div>Total received bytes: <span id="totalReceivedBytes"></span></div>
+                    </div>
+                    <div class="block" id="channelSwitcher">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-device-tv-old" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="#ffffff" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                            <path d="M3 7m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" />
+                            <path d="M16 3l-4 4l-4 -4" />
+                            <path d="M15 7v13" />
+                            <path d="M18 15v.01" />
+                            <path d="M18 12v.01" />
+                          </svg>    
+                          <div>Channel: <span id="selectedChannel">-</span></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
 </body>
 </html>
